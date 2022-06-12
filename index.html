@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <div class="container">
+    <video class="input_video" style="display: none;"></video>
+
+    <canvas class="output_canvas" width="1280px" height="720px"></canvas>
+  </div>
+</body>
+
+<script type="module">
+  const videoElement = document.getElementsByClassName('input_video')[0];
+  const canvasElement = document.getElementsByClassName('output_canvas')[0];
+  const canvasCtx = canvasElement.getContext('2d');
+
+  function onResults(results) {
+    canvasCtx.save();
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+    if (results.multiHandLandmarks) {
+      for (const landmarks of results.multiHandLandmarks) {
+        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+        drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 2});
+      }
+    }
+    let wristAngle = getJointAngles(results, 20, 17, 0);
+    let wristIsOpen = wristAngle > 50;
+
+    // Write hand open or closed status.
+    if (wristIsOpen) {
+      canvasCtx.font = '30px Arial';
+      canvasCtx.fillStyle = '#00FF00';
+      canvasCtx.fillText('Hand Open', 10, 50);
+    } else {
+      canvasCtx.font = '30px Arial';
+      canvasCtx.fillStyle = '#FF0000';
+      canvasCtx.fillText('Hand Closed', 10, 50);
+    }
+    // flip the canvas horizontally
+    canvasCtx.translate(canvasElement.width, 0);
+    canvasCtx.restore();
+
+    console.log(getJointAngles(results, 20, 17, 0));
+    console.log(results.multiHandLandmarks)
+  }
+
+  function getJointAngles(result, joint_1, joint_2, joint_3) {
+    for (let hand of result.multiHandLandmarks) {
+      let j1 = [hand[joint_1].x, hand[joint_1].y];
+      let j2 = [hand[joint_2].x, hand[joint_2].y];
+      let j3 = [hand[joint_3].x, hand[joint_3].y];
+
+      let j32_radians = Math.atan2(j3[1] - j2[1], j3[0] - j2[0]);
+      let j12_radians = Math.atan2(j1[1] - j2[1], j1[0] - j2[0]);
+      let angle = j32_radians - j12_radians;
+      angle = Math.abs(angle * 180 / Math.PI);
+      if (angle > 180) { 
+        angle = 360 - angle 
+      };
+      return Math.round(angle, 2);
+    }
+  }
+
+  const hands = new Hands({locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+  }});
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+  hands.onResults(onResults);
+
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      await hands.send({image: videoElement});
+    },
+    width: 1280,
+    height: 720
+  });
+  camera.start();
+</script>
+</html>
